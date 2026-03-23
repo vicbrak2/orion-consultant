@@ -1,0 +1,155 @@
+{
+  "name": "Orion Expert Committee — Trading Signal Flow",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trading-signal",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-in",
+      "name": "Webhook (Java Bot Signal)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "trading-signal"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://orion-consultant:8100/api/v1/consult",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "options": {
+          "timeout": 10000,
+          "fullResponse": false
+        }
+      },
+      "id": "orion-rest-call",
+      "name": "Orion REST — Consult Committee",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "approve-check",
+              "leftValue": "={{ $json.final_verdict }}",
+              "rightValue": "APPROVE",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "verdict-router",
+      "name": "Verdict Router",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [750, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://orion-consultant:8100/api/n8n/process-event",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ action: 'EXECUTE', signal: $('Webhook (Java Bot Signal)').item.json.body, verdict: $json }) }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "execute-trade",
+      "name": "Execute Trade (Java Bot)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://orion-consultant:8100/api/n8n/process-event",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ action: 'REJECT', signal: $('Webhook (Java Bot Signal)').item.json.body, verdict: $json }) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "reject-trade",
+      "name": "Reject Trade (Notify Bot)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1000, 400]
+    }
+  ],
+  "connections": {
+    "Webhook (Java Bot Signal)": {
+      "main": [
+        [
+          {
+            "node": "Orion REST — Consult Committee",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Orion REST — Consult Committee": {
+      "main": [
+        [
+          {
+            "node": "Verdict Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verdict Router": {
+      "main": [
+        [
+          {
+            "node": "Execute Trade (Java Bot)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Trade (Notify Bot)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "trading",
+      "id": "1"
+    },
+    {
+      "name": "orion",
+      "id": "2"
+    }
+  ]
+}

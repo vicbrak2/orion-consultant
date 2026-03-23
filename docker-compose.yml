@@ -1,0 +1,61 @@
+# ──────────────────────────────────────────────────────
+# 🌌 Orion Consultant — Docker Compose
+#
+# Levanta el microservicio de Python junto con la
+# infraestructura compartida con LLM Trade NX (Java).
+#
+# Uso:
+#   docker network create llm-trade-network  (solo la primera vez)
+#   docker-compose up -d --build
+#   docker-compose logs -f orion-consultant
+# ──────────────────────────────────────────────────────
+
+services:
+  # ── Orion Consultant (Expert Committee) ─────────────
+  orion-consultant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: orion-consultant
+    restart: unless-stopped
+    ports:
+      - "${ORION_PORT:-8100}:8100"
+    env_file:
+      - .env
+    environment:
+      # Override defaults for Docker networking
+      - ORION_HOST=0.0.0.0
+      - ORION_PORT=8100
+      - ORION_LOG_LEVEL=${ORION_LOG_LEVEL:-info}
+      # Risk thresholds (configurable via .env)
+      - ORION_MAX_DRAWDOWN=${ORION_MAX_DRAWDOWN:-0.05}
+      - ORION_MAX_VOLATILITY=${ORION_MAX_VOLATILITY:-200.0}
+      # Docker-internal service URLs
+      - ORION_N8N_BASE_URL=${ORION_N8N_BASE_URL:-http://n8n:5678}
+      - ORION_N8N_WEBHOOK_URL=${ORION_N8N_WEBHOOK_URL:-http://n8n:5678/webhook}
+      - ORION_JAVA_BOT_URL=${ORION_JAVA_BOT_URL:-http://llm-trade-nx-dev:8080}
+    networks:
+      - llm-trade-network
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8100/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+        reservations:
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  llm-trade-network:
+    external: true
+    name: ${ORION_DOCKER_NETWORK:-llm-trade-network}

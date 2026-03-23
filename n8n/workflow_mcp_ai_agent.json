@@ -1,0 +1,113 @@
+{
+  "name": "Orion MCP — AI Agent Expert Committee",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trading-signal-ai",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-in",
+      "name": "Webhook (Java Bot Signal)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [250, 300],
+      "webhookId": "trading-signal-ai"
+    },
+    {
+      "parameters": {
+        "agent": "conversationalAgent",
+        "promptType": "define",
+        "text": "You are a trading decision coordinator for Step Index. Analyze this trading signal using the Orion expert tools:\n\n{{ JSON.stringify($json, null, 2) }}\n\nCall the consult_committee tool with all the parameters from the signal. Then interpret the results and provide your final recommendation in this JSON format:\n{\n  \"action\": \"EXECUTE\" or \"REJECT\" or \"WAIT\",\n  \"confidence\": 0.0-1.0,\n  \"reasoning\": \"your analysis\"\n}",
+        "options": {
+          "systemMessage": "You are an expert trading analyst. Use the Orion tools to validate signals. Be conservative — when in doubt, reject."
+        }
+      },
+      "id": "ai-agent",
+      "name": "AI Agent (Decision Maker)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "toolType": "mcpClient",
+        "mcpConfig": {
+          "transport": "streamableHttp",
+          "url": "http://orion-consultant:8100/mcp/"
+        }
+      },
+      "id": "mcp-orion",
+      "name": "Orion MCP Tools",
+      "type": "@n8n/n8n-nodes-langchain.toolMcp",
+      "typeVersion": 1,
+      "position": [500, 500]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o-mini",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "id": "openai-model",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [350, 500]
+    }
+  ],
+  "connections": {
+    "Webhook (Java Bot Signal)": {
+      "main": [
+        [
+          {
+            "node": "AI Agent (Decision Maker)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Orion MCP Tools": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Decision Maker)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent (Decision Maker)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": [
+    {
+      "name": "trading",
+      "id": "1"
+    },
+    {
+      "name": "orion-mcp",
+      "id": "2"
+    },
+    {
+      "name": "ai-agent",
+      "id": "3"
+    }
+  ]
+}
