@@ -16,6 +16,7 @@ def evaluate_pattern(
     take_profit: float,
     current_volatility: float = 0.0,
     direction: str = "BUY",
+    symbol: str = "EURUSD",
 ) -> ExpertOpinion:
     """
     Evaluates Step Index-specific patterns and trade geometry.
@@ -59,16 +60,18 @@ def evaluate_pattern(
     # In Step Index, sudden price jumps (spikes) are common.
     # A very tight stop loss in high volatility suggests the trade
     # is in a spike zone.
+    multiplier = 10.0 if "step" in symbol.lower() else 1.0
+
     if current_volatility > 0:
         risk_pct = (risk / entry_price) * 100
 
-        if current_volatility > 150 and risk_pct < 0.5:
+        if current_volatility > (150 * multiplier) and risk_pct < 0.5:
             reasons.append(
                 "⚠️ Stop-loss muy ajustado en zona de alta volatilidad. "
                 "Alto riesgo de spike."
             )
             pattern_score -= 0.3
-        elif current_volatility > 100 and risk_pct < 0.3:
+        elif current_volatility > (100 * multiplier) and risk_pct < 0.3:
             reasons.append(
                 "Stop-loss extremadamente ajustado. Posible zona de spike."
             )
@@ -76,7 +79,7 @@ def evaluate_pattern(
 
     # ── Consolidation pattern check ───────────────────
     # If volatility is very low, the market may be in consolidation
-    if 0 < current_volatility < 30:
+    if 0 < current_volatility < (30 * multiplier):
         reasons.append(
             "Volatilidad baja — posible consolidación. "
             "Ruptura esperada, monitorear dirección."

@@ -30,6 +30,7 @@ def evaluate_trend(
     direction: str,
     trend_h1: str | None = None,
     trend_h4: str | None = None,
+    symbol: str = "EURUSD",
 ) -> ExpertOpinion:
     """
     Analyzes multi-timeframe trend alignment.

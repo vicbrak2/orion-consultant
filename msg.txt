@@ -1,1 +1,0 @@
-fix: disable integration tests requiring admin privileges in MQL5CompilationServiceBranchTest

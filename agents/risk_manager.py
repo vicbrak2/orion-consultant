@@ -16,6 +16,7 @@ def evaluate_risk(
     current_volatility: float,
     entry_price: float = 0.0,
     stop_loss: float = 0.0,
+    symbol: str = "EURUSD",
 ) -> ExpertOpinion:
     """
     Validates whether it is safe to trade based on account health.
@@ -46,12 +47,16 @@ def evaluate_risk(
         risk_score += 0.2
 
     # ── Volatility check ──────────────────────────────
-    if current_volatility > settings.max_volatility:
+    # Adjust volatility threshold for Synthetic Indices like Step Index
+    multiplier = 10.0 if "step" in symbol.lower() else 1.0
+    adjusted_max_volatility = settings.max_volatility * multiplier
+
+    if current_volatility > adjusted_max_volatility:
         reasons.append(
-            f"Volatilidad ({current_volatility:.1f}) excede el máximo ({settings.max_volatility:.1f})."
+            f"Volatilidad ({current_volatility:.1f}) excede el máximo ({adjusted_max_volatility:.1f})."
         )
         risk_score += 0.4
-    elif current_volatility > settings.max_volatility * 0.8:
+    elif current_volatility > adjusted_max_volatility * 0.8:
         reasons.append(
             f"Volatilidad ({current_volatility:.1f}) elevada. Monitorear."
         )

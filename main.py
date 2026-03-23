@@ -102,6 +102,7 @@ def _build_committee_verdict(signal: SignalRequest) -> CommitteeVerdict:
 
     opinions = [
         evaluate_risk(
+            symbol=signal.symbol,
             equity=signal.equity,
             balance=signal.balance,
             current_volatility=signal.current_volatility,
@@ -109,11 +110,13 @@ def _build_committee_verdict(signal: SignalRequest) -> CommitteeVerdict:
             stop_loss=signal.stop_loss,
         ),
         evaluate_trend(
+            symbol=signal.symbol,
             direction=signal.direction.value,
             trend_h1=signal.trend_h1,
             trend_h4=signal.trend_h4,
         ),
         evaluate_pattern(
+            symbol=signal.symbol,
             entry_price=signal.entry_price,
             stop_loss=signal.stop_loss,
             take_profit=signal.take_profit,
@@ -240,6 +243,7 @@ async def consult_expert(expert_name: ExpertName, signal: SignalRequest):
 
     if expert_name == ExpertName.RISK_MANAGER:
         return evaluate_risk(
+            symbol=signal.symbol,
             equity=signal.equity,
             balance=signal.balance,
             current_volatility=signal.current_volatility,
@@ -248,12 +252,14 @@ async def consult_expert(expert_name: ExpertName, signal: SignalRequest):
         )
     elif expert_name == ExpertName.TREND_ANALYZER:
         return evaluate_trend(
+            symbol=signal.symbol,
             direction=signal.direction.value,
             trend_h1=signal.trend_h1,
             trend_h4=signal.trend_h4,
         )
     elif expert_name == ExpertName.PATTERN_EXPERT:
         return evaluate_pattern(
+            symbol=signal.symbol,
             entry_price=signal.entry_price,
             stop_loss=signal.stop_loss,
             take_profit=signal.take_profit,
