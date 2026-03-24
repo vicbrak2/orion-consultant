@@ -31,7 +31,7 @@ class ExpertName(str, Enum):
     RISK_MANAGER = "risk_manager"
     TREND_ANALYZER = "trend_analyzer"
     PATTERN_EXPERT = "pattern_expert"
-
+    VIGILANTE_AGENT = "vigilante_agent"
 
 # ── Request ───────────────────────────────────────────
 
@@ -57,6 +57,20 @@ class SignalRequest(BaseModel):
     # Metadata
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+
+class VigilanteRequest(BaseModel):
+    """Incoming request for async Vigilante evaluation of an open episode."""
+    symbol: str = Field(..., examples=["Step Index"])
+    ticket_id: int = Field(..., examples=[123456789])
+    direction: SignalDirection
+    entry_price: float = Field(..., gt=0)
+    current_price: float = Field(..., gt=0)
+    current_volatility: float = Field(default=0.0, ge=0)
+    unrealized_pnl: float = Field(default=0.0)
+    duration_minutes: int = Field(..., ge=0)
+    rsi_value: Optional[float] = Field(default=None)
+    metadata: Optional[dict] = Field(default_factory=dict)
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 # ── Responses ─────────────────────────────────────────
 

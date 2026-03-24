@@ -33,10 +33,12 @@ from models.schemas import (
     HealthResponse,
     ExpertName,
     Verdict,
+    VigilanteRequest,
 )
 from agents.risk_manager import evaluate_risk
 from agents.trend_analyzer import evaluate_trend
 from agents.pattern_expert import evaluate_pattern
+from agents.vigilante_agent import evaluate_vigilante_episode
 
 # Import the MCP server instance for mounting
 from mcp_server import mcp as mcp_server_instance
@@ -145,6 +147,31 @@ def _build_committee_verdict(signal: SignalRequest) -> CommitteeVerdict:
         opinions=opinions,
         summary=summary,
     )
+
+
+@app.post("/api/v1/vigilante-evaluation", response_model=ExpertOpinion, tags=["Vigilante"])
+async def consult_vigilante(request: VigilanteRequest):
+    """
+    Evaluación estratégica asíncrona usando Groq + n8n PostgreSQL RAG Memory.
+    Este endpoint consume la memoria histórica antes de devolver el dictamen.
+    """
+    try:
+        logger.info(
+            "🔎 Vigilante LLM request received for %s [PNL: %.2f]",
+            request.symbol,
+            request.unrealized_pnl,
+        )
+        opinion = await evaluate_vigilante_episode(request)
+        logger.info("🛡️ Vigilante Verdict -> %s", opinion.verdict.value)
+        return opinion
+    except Exception as e:
+        logger.error("Vigilante failed: %s", str(e))
+        return ExpertOpinion(
+            expert=ExpertName.VIGILANTE_AGENT,
+            verdict=Verdict.HOLD,
+            confidence=0.0,
+            reason=f"System error: {str(e)}"
+        )
 
 
 def _join_url(base_url: str, path: str) -> str:

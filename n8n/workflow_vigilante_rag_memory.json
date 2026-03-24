@@ -1,0 +1,87 @@
+{
+  "name": "Vigilante RAG Memory (Orion Context)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "orion-vigilante-memory",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "e1f1a1a0-1234-4bbb-8c9a-abc123456789",
+      "name": "Webhook (RAG Trigger)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        180,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT outcome_class, final_action, profit_loss, close_time \nFROM strategy_episodes \nWHERE symbol = $1 AND state = 'CLOSED' \nORDER BY close_time DESC \nLIMIT 10;",
+        "additionalFields": {
+          "queryParams": "={{ $json.body.symbol }}"
+        }
+      },
+      "id": "a2c2b2b1-2345-4ccc-9d0b-bcd234567890",
+      "name": "Fetch Recent Episodes (Postgres)",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.1,
+      "position": [
+        400,
+        240
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "Tu_ID_Postgres",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const episodes = $input.all().map(e => e.json);\nlet wins = 0;\nlet losses = 0;\nlet breakevens = 0;\nlet total_pnl = 0;\n\nepisodes.forEach(e => {\n  if (e.outcome_class === 'WIN') wins++;\n  else if (e.outcome_class === 'LOSS') losses++;\n  else breakevens++;\n  \n  if (e.profit_loss) total_pnl += parseFloat(e.profit_loss);\n});\n\nconst total = episodes.length;\nconst winRate = total ? ((wins / total) * 100).toFixed(1) : 0;\n\nconst summary = {\n  symbol: $('Webhook (RAG Trigger)').first().json.body.symbol,\n  timeframe: $('Webhook (RAG Trigger)').first().json.body.timeframe || \"H1\",\n  episodes_analyzed: total,\n  win_rate_pct: winRate,\n  total_pnl: total_pnl.toFixed(2),\n  breakdown: `W: ${wins} | L: ${losses} | BE: ${breakevens}`,\n  rag_context: `Históricamente en los últimos ${total} trades, se observa un win rate de ${winRate}%. El PNL total reciente es de ${total_pnl.toFixed(2)}. Favor de considerar esta estructura de riesgo reciente.`\n};\n\nreturn [{ json: summary }];"
+      },
+      "id": "c3d3c3c2-3456-4ddd-0e1c-cde345678901",
+      "name": "Compile Historical RAG Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        620,
+        240
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook (RAG Trigger)": {
+      "main": [
+        [
+          {
+            "node": "Fetch Recent Episodes (Postgres)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Recent Episodes (Postgres)": {
+      "main": [
+        [
+          {
+            "node": "Compile Historical RAG Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "be11f1de-8488-44d5-8949-8eebb9b91abc"
+}
