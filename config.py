@@ -35,6 +35,10 @@ class Settings(BaseSettings):
         default="/webhook/agent-chat",
         alias="ORION_N8N_AGENT_CHAT_WEBHOOK_PATH",
     )
+    n8n_agent_chat_enabled: bool = Field(
+        default=False,
+        alias="ORION_N8N_AGENT_CHAT_ENABLED",
+    )
     n8n_trading_decision_webhook_path: str = Field(
         default="/webhook/trading-decision",
         alias="ORION_N8N_TRADING_DECISION_WEBHOOK_PATH",
@@ -70,6 +74,12 @@ class Settings(BaseSettings):
 
     # ── MCP ───────────────────────────────────────────
     mcp_transport: str = Field(default="stdio", alias="ORION_MCP_TRANSPORT")
+
+    # ── LLM experts ───────────────────────────────────
+    enable_expert_llm: bool = Field(
+        default=False,
+        alias="ORION_ENABLE_EXPERT_LLM",
+    )
 
     model_config = {
         "env_file": ".env",

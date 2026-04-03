@@ -25,11 +25,11 @@ RUN useradd --create-home orion
 USER orion
 
 # Expose FastAPI port
-EXPOSE 8100
+EXPOSE 8090
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "from urllib.request import urlopen; urlopen('http://localhost:8100/health')"
+    CMD python -c "from urllib.request import urlopen; urlopen('http://localhost:8090/health')"
 
 # Default: run the FastAPI server
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8100"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8090"]
