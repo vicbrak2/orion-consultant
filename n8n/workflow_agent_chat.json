@@ -1,0 +1,63 @@
+{
+  "name": "Orion Agent Chat",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent-chat",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "agent-chat-webhook",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ],
+      "webhookId": "agent-chat"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $('Webhook').first().json.body || $('Webhook').first().json || {};\nconst message = String(body.message || '').trim();\nreturn [{\n  json: {\n    success: true,\n    agent: 'n8n-agent-chat',\n    message,\n    reply: message ? `Agent chat activo. Mensaje recibido: ${message}` : 'Agent chat activo.',\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "agent-chat-response",
+      "name": "Build Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        300
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Build Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "active": true,
+  "tags": [
+    {
+      "name": "orion",
+      "id": "1"
+    },
+    {
+      "name": "agent-chat",
+      "id": "2"
+    }
+  ]
+}

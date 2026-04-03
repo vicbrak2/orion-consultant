@@ -11,45 +11,23 @@
       "id": "e1f1a1a0-1234-4bbb-8c9a-abc123456789",
       "name": "Webhook (RAG Trigger)",
       "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
+      "typeVersion": 2,
       "position": [
         180,
         240
-      ]
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "SELECT outcome_class, final_action, profit_loss, close_time \nFROM strategy_episodes \nWHERE symbol = $1 AND state = 'CLOSED' \nORDER BY close_time DESC \nLIMIT 10;",
-        "additionalFields": {
-          "queryParams": "={{ $json.body.symbol }}"
-        }
-      },
-      "id": "a2c2b2b1-2345-4ccc-9d0b-bcd234567890",
-      "name": "Fetch Recent Episodes (Postgres)",
-      "type": "n8n-nodes-base.postgres",
-      "typeVersion": 2.1,
-      "position": [
-        400,
-        240
       ],
-      "credentials": {
-        "postgres": {
-          "id": "Tu_ID_Postgres",
-          "name": "Postgres account"
-        }
-      }
+      "webhookId": "orion-vigilante-memory"
     },
     {
       "parameters": {
-        "jsCode": "const episodes = $input.all().map(e => e.json);\nlet wins = 0;\nlet losses = 0;\nlet breakevens = 0;\nlet total_pnl = 0;\n\nepisodes.forEach(e => {\n  if (e.outcome_class === 'WIN') wins++;\n  else if (e.outcome_class === 'LOSS') losses++;\n  else breakevens++;\n  \n  if (e.profit_loss) total_pnl += parseFloat(e.profit_loss);\n});\n\nconst total = episodes.length;\nconst winRate = total ? ((wins / total) * 100).toFixed(1) : 0;\n\nconst summary = {\n  symbol: $('Webhook (RAG Trigger)').first().json.body.symbol,\n  timeframe: $('Webhook (RAG Trigger)').first().json.body.timeframe || \"H1\",\n  episodes_analyzed: total,\n  win_rate_pct: winRate,\n  total_pnl: total_pnl.toFixed(2),\n  breakdown: `W: ${wins} | L: ${losses} | BE: ${breakevens}`,\n  rag_context: `Históricamente en los últimos ${total} trades, se observa un win rate de ${winRate}%. El PNL total reciente es de ${total_pnl.toFixed(2)}. Favor de considerar esta estructura de riesgo reciente.`\n};\n\nreturn [{ json: summary }];"
+        "jsCode": "const body = $('Webhook (RAG Trigger)').first().json.body || {};\nconst symbol = body.symbol || 'UNKNOWN';\nconst timeframe = body.timeframe || 'H1';\nconst context = {\n  symbol,\n  timeframe,\n  episodes_analyzed: 0,\n  win_rate_pct: '0.0',\n  total_pnl: '0.00',\n  breakdown: 'W: 0 | L: 0 | BE: 0',\n  rag_context: `No hay episodios historicos disponibles en n8n para ${symbol}. Usa este caso como baseline conservador y prioriza gestion defensiva.`\n};\nreturn [{ json: context }];"
       },
       "id": "c3d3c3c2-3456-4ddd-0e1c-cde345678901",
-      "name": "Compile Historical RAG Context",
+      "name": "Build Default RAG Context",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        620,
+        430,
         240
       ]
     }
@@ -60,18 +38,7 @@
       "main": [
         [
           {
-            "node": "Fetch Recent Episodes (Postgres)",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Fetch Recent Episodes (Postgres)": {
-      "main": [
-        [
-          {
-            "node": "Compile Historical RAG Context",
+            "node": "Build Default RAG Context",
             "type": "main",
             "index": 0
           }
@@ -82,6 +49,5 @@
   "active": false,
   "settings": {
     "executionOrder": "v1"
-  },
-  "versionId": "be11f1de-8488-44d5-8949-8eebb9b91abc"
+  }
 }

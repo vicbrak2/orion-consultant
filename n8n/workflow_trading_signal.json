@@ -18,10 +18,10 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://orion-consultant:8100/api/v1/consult",
+        "url": "http://orion-consultant:8090/api/v1/consult",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.body) }}",
+        "jsonBody": "={{ $json.body || $json }}",
         "options": {
           "timeout": 10000,
           "fullResponse": false
@@ -65,10 +65,10 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://orion-consultant:8100/api/n8n/process-event",
+        "url": "http://orion-consultant:8090/api/n8n/process-event",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ action: 'EXECUTE', signal: $('Webhook (Java Bot Signal)').item.json.body, verdict: $json }) }}",
+        "jsonBody": "={{ { action: 'EXECUTE', signal: $('Webhook (Java Bot Signal)').item.json.body || $('Webhook (Java Bot Signal)').item.json, verdict: $json } }}",
         "options": {
           "timeout": 15000
         }
@@ -82,10 +82,10 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://orion-consultant:8100/api/n8n/process-event",
+        "url": "http://orion-consultant:8090/api/n8n/process-event",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ action: 'REJECT', signal: $('Webhook (Java Bot Signal)').item.json.body, verdict: $json }) }}",
+        "jsonBody": "={{ { action: 'REJECT', signal: $('Webhook (Java Bot Signal)').item.json.body || $('Webhook (Java Bot Signal)').item.json, verdict: $json } }}",
         "options": {
           "timeout": 5000
         }

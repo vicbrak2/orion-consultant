@@ -1,0 +1,45 @@
+{
+  "name": "Orion Notification - Trading Decision",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "trading-decision",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "notif-webhook-trading-decision",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [220, 240],
+      "webhookId": "trading-decision"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $('Webhook').first().json.body || $('Webhook').first().json;\nreturn [{ json: { accepted: true, type: 'trading-decision', payload: body } }];"
+      },
+      "id": "notif-ack-trading-decision",
+      "name": "Ack",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 240]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Ack",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

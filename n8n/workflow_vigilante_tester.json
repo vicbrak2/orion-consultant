@@ -1,0 +1,50 @@
+{
+  "name": "TEST START - Llama3 via Orion Vigilante",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-node-1234",
+      "name": "Start Test (Manual)",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        180,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://orion-consultant:8100/api/v1/vigilante-evaluation",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"symbol\": \"Step Index\",\n  \"ticket_id\": 999111,\n  \"direction\": \"SELL\",\n  \"entry_price\": 8045.0,\n  \"current_price\": 8055.0,\n  \"current_volatility\": 80.0,\n  \"unrealized_pnl\": -10.0,\n  \"duration_minutes\": 45\n}",
+        "options": {}
+      },
+      "id": "http-node-5678",
+      "name": "Call Orion LLM Agent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        400,
+        240
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Start Test (Manual)": {
+      "main": [
+        [
+          {
+            "node": "Call Orion LLM Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {}
+}
