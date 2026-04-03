@@ -4,10 +4,12 @@ Tests for Orion's n8n integration facade.
 
 from __future__ import annotations
 
+import httpx
 from fastapi.testclient import TestClient
 
 import main
 from main import app
+from config import settings
 
 
 def test_n8n_health_returns_up():
@@ -51,6 +53,26 @@ def test_process_event_proxies_to_java(monkeypatch):
     assert response.json()["processed"] is True
 
 
+def test_process_event_returns_accepted_when_java_fails(monkeypatch):
+    client = TestClient(app)
+
+    async def fake_post_json(url: str, payload, *, timeout: float):
+        raise httpx.ConnectError("java offline")
+
+    monkeypatch.setattr(main, "_post_json", fake_post_json)
+
+    response = client.post(
+        "/api/n8n/process-event",
+        json={"action": "EXECUTE", "signal": {"symbol": "Step Index"}},
+    )
+
+    assert response.status_code == 202
+    data = response.json()
+    assert data["processed"] is False
+    assert data["forwarded"] is False
+    assert data["status"] == "accepted_but_not_forwarded"
+
+
 def test_trigger_workflow_calls_n8n_webhook(monkeypatch):
     client = TestClient(app)
 
@@ -89,6 +111,7 @@ def test_n8n_status_reports_availability(monkeypatch):
 
 def test_agent_chat_uses_n8n_agent_webhook(monkeypatch):
     client = TestClient(app)
+    monkeypatch.setattr(settings, "n8n_agent_chat_enabled", True)
 
     async def fake_post_json(url: str, payload, *, timeout: float):
         assert url.endswith("/webhook/agent-chat")
@@ -110,6 +133,17 @@ def test_agent_chat_requires_message():
     response = client.post("/api/agent/chat", json={})
 
     assert response.status_code == 422
+
+
+def test_agent_chat_returns_disabled_fallback(monkeypatch):
+    client = TestClient(app)
+    monkeypatch.setattr(settings, "n8n_agent_chat_enabled", False)
+
+    response = client.post("/api/agent/chat", json={"message": "hola"})
+
+    assert response.status_code == 200
+    assert response.json()["disabled"] is True
+    assert response.json()["agent"] == "orion-local-fallback"
 
 
 def test_notification_endpoints_forward_to_n8n(monkeypatch):

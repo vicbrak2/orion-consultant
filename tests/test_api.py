@@ -7,6 +7,8 @@ Covers: committee endpoint, individual expert endpoint, health check,
 
 from __future__ import annotations
 
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -34,6 +36,12 @@ class TestHealthEndpoint:
         assert data["service"] == "orion-consultant"
         assert "version" in data
         assert "timestamp" in data
+
+    def test_metrics_endpoint_exposes_prometheus(self, client: TestClient):
+        response = client.get("/metrics")
+        assert response.status_code == 200
+        assert "orion_consult_requests_total" in response.text
+        assert "http_requests_total" in response.text or "http_request_duration" in response.text
 
 
 # ── Committee Endpoint ────────────────────────────────
@@ -89,6 +97,44 @@ class TestCommitteeEndpoint:
         data = response.json()
         assert data["final_verdict"] == "REJECT"
         assert data["rejected_count"] >= 2
+
+    def test_n8n_wrapped_signal_returns_verdict(self, client: TestClient):
+        """n8n-style payloads wrapped under body should still validate."""
+        payload = {
+            "body": {
+                "symbol": "Step Index",
+                "direction": "BUY",
+                "entry_price": 5432.10,
+                "stop_loss": 5400.00,
+                "take_profit": 5500.00,
+                "equity": 1000.0,
+                "balance": 1050.0,
+                "current_volatility": 120.5,
+                "trend_h1": "bullish",
+                "trend_h4": "bullish",
+            }
+        }
+        response = client.post("/api/v1/consult", json=payload)
+        assert response.status_code == 200
+        assert response.json()["final_verdict"] in ("APPROVE", "REJECT", "HOLD")
+
+    def test_stringified_signal_returns_verdict(self, client: TestClient):
+        """Stringified JSON payloads from n8n should be accepted."""
+        payload = {
+            "symbol": "Step Index",
+            "direction": "BUY",
+            "entry_price": 5432.10,
+            "stop_loss": 5400.00,
+            "take_profit": 5500.00,
+            "equity": 1000.0,
+            "balance": 1050.0,
+            "current_volatility": 120.5,
+            "trend_h1": "bullish",
+            "trend_h4": "bullish",
+        }
+        response = client.post("/api/v1/consult", json=json.dumps(payload))
+        assert response.status_code == 200
+        assert response.json()["final_verdict"] in ("APPROVE", "REJECT", "HOLD")
 
     def test_missing_required_fields_returns_422(self, client: TestClient):
         """Missing required fields should return 422 Validation Error."""
