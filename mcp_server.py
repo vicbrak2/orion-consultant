@@ -12,6 +12,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sys
 import os
@@ -63,7 +64,7 @@ mcp = FastMCP(
 
 
 @mcp.tool()
-def validate_risk(
+async def validate_risk(
     equity: float,
     balance: float,
     current_volatility: float,
@@ -76,7 +77,7 @@ def validate_risk(
     Evalúa drawdown, volatilidad y distancia del stop-loss.
     Retorna un JSON con el veredicto, confianza y razón.
     """
-    opinion = evaluate_risk(
+    opinion = await evaluate_risk(
         equity=equity,
         balance=balance,
         current_volatility=current_volatility,
@@ -87,7 +88,7 @@ def validate_risk(
 
 
 @mcp.tool()
-def analyze_trend(
+async def analyze_trend(
     direction: str,
     trend_h1: str = "",
     trend_h4: str = "",
@@ -98,7 +99,7 @@ def analyze_trend(
     Evalúa alineación entre la dirección de la señal y las tendencias H1/H4.
     Retorna un JSON con el veredicto, confianza y razón.
     """
-    opinion = evaluate_trend(
+    opinion = await evaluate_trend(
         direction=direction,
         trend_h1=trend_h1 or None,
         trend_h4=trend_h4 or None,
@@ -107,7 +108,7 @@ def analyze_trend(
 
 
 @mcp.tool()
-def detect_patterns(
+async def detect_patterns(
     entry_price: float,
     stop_loss: float,
     take_profit: float,
@@ -120,7 +121,7 @@ def detect_patterns(
     Analiza R:R ratio, zonas de spike, consolidaciones y geometría del trade.
     Retorna un JSON con el veredicto, confianza y razón.
     """
-    opinion = evaluate_pattern(
+    opinion = await evaluate_pattern(
         entry_price=entry_price,
         stop_loss=stop_loss,
         take_profit=take_profit,
@@ -134,7 +135,7 @@ def detect_patterns(
 
 
 @mcp.tool()
-def consult_committee(
+async def consult_committee(
     equity: float,
     balance: float,
     current_volatility: float,
@@ -155,7 +156,7 @@ def consult_committee(
     opiniones individuales y resumen.
     """
     # Gather opinions
-    opinions = [
+    opinions = await asyncio.gather(
         evaluate_risk(
             equity=equity,
             balance=balance,
@@ -175,7 +176,7 @@ def consult_committee(
             current_volatility=current_volatility,
             direction=direction,
         ),
-    ]
+    )
 
     # Tally votes
     approved = sum(1 for o in opinions if o.verdict == Verdict.APPROVE)

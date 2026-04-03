@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Optional
+from typing import Optional, Any
 
 from pydantic import BaseModel, Field
 
@@ -49,10 +49,60 @@ class SignalRequest(BaseModel):
     equity: float = Field(..., gt=0, examples=[1000.0])
     balance: float = Field(..., gt=0, examples=[1050.0])
 
-    # Market context
+    # Market context (legacy)
     current_volatility: float = Field(default=0.0, ge=0, examples=[120.5])
     trend_h1: Optional[str] = Field(default=None, examples=["bullish"])
     trend_h4: Optional[str] = Field(default=None, examples=["bullish"])
+
+    # ── Enrichment: Trace & strategy ──────────────────────
+    trace_id: Optional[str] = Field(default=None, examples=["NA-1774987672997"])
+    strategy_id: Optional[str] = Field(default=None, examples=["step_index_confluence_v1"])
+
+    # ── Enrichment: FSM state ─────────────────────────────
+    fsm_phase: Optional[str] = Field(default=None, examples=["TREND"])
+    step_index_type: Optional[str] = Field(default=None, examples=["CLASSIC"])
+    current_clv: Optional[float] = Field(default=None, examples=[0.62])
+    previous_clv: Optional[float] = Field(default=None, examples=[0.41])
+    macro_structure_ok: Optional[bool] = Field(default=None, examples=[True])
+    sar_adx_signal: Optional[int] = Field(default=None, examples=[1])
+    sar_adx_blocking: Optional[bool] = Field(default=None, examples=[False])
+
+    # ── Enrichment: Technical indicators (M15) ────────────
+    adx_m15: Optional[float] = Field(default=None, examples=[28.5])
+    plus_di_m15: Optional[float] = Field(default=None, examples=[31.2])
+    minus_di_m15: Optional[float] = Field(default=None, examples=[14.8])
+    atr_m15: Optional[float] = Field(default=None, examples=[48.0])
+    adx_macro: Optional[float] = Field(default=None, examples=[28.5])
+    plus_di_macro: Optional[float] = Field(default=None, examples=[31.2])
+    minus_di_macro: Optional[float] = Field(default=None, examples=[14.8])
+    atr_macro: Optional[float] = Field(default=None, examples=[48.0])
+    range_to_atr: Optional[float] = Field(default=None, examples=[1.36])
+    range_to_atr_micro: Optional[float] = Field(default=None, examples=[1.22])
+    bb_kc_ratio: Optional[float] = Field(default=None, examples=[0.92])
+    bb_kc_ratio_macro: Optional[float] = Field(default=None, examples=[0.82])
+
+    # ── Enrichment: actual MTF source of truth ────────────
+    trend_timeframe: Optional[str] = Field(default=None, examples=["H1"])
+    macro_timeframe: Optional[str] = Field(default=None, examples=["M15"])
+    micro_timeframe: Optional[str] = Field(default=None, examples=["M5"])
+    trend_direction: Optional[str] = Field(default=None, examples=["BULLISH"])
+
+    # ── Enrichment: Episode / bias ────────────────────────
+    bias: Optional[int] = Field(default=None, examples=[1])
+    entry_window_open: Optional[bool] = Field(default=None, examples=[True])
+
+    # ── Enrichment: Tactical confidence ───────────────────
+    tactical_confidence: Optional[float] = Field(default=None, examples=[0.85])
+
+    # ── Enrichment: Flexible context blocks ───────────────
+    decision_context: Optional[dict[str, Any]] = Field(default=None)
+    analysis_context: Optional[dict[str, Any]] = Field(default=None)
+    episode_summary: Optional[dict[str, Any]] = Field(default=None)
+    episode_context: Optional[dict[str, Any]] = Field(default=None)
+    account_context: Optional[dict[str, Any]] = Field(default=None)
+    confirmations: Optional[dict[str, Any]] = Field(default=None)
+    episode_events: Optional[list[dict[str, Any]]] = Field(default=None)
+    episode_checkpoints: Optional[list[dict[str, Any]]] = Field(default=None)
 
     # Metadata
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
