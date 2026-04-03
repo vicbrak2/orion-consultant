@@ -1,35 +1,6 @@
-import os
 import json
-import httpx
-from groq import AsyncGroq
+import agents.rag_client as rag_client
 from models.schemas import ExpertOpinion, ExpertName, Verdict, VigilanteRequest
-
-# Instancia de Groq para consumo asincrono
-# Requiere GROQ_API_KEY en variables de entorno
-_groq_client = None
-
-def get_groq_client() -> AsyncGroq:
-    global _groq_client
-    if _groq_client is None:
-        _groq_client = AsyncGroq(api_key=os.environ.get("GROQ_API_KEY", ""))
-    return _groq_client
-
-async def fetch_rag_memory_from_n8n(symbol: str) -> str:
-    """Consulta asíncrona a n8n para traer contexto Postgres de strategy_episodes."""
-    webhook_url = os.environ.get("ORION_VIGILANTE_RAG_WEBHOOK_URL")
-    if not webhook_url:
-        return "[⚠] No RAG URL configured (ORION_VIGILANTE_RAG_WEBHOOK_URL is missing)."
-        
-    try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.post(webhook_url, json={"symbol": symbol}, timeout=8.0)
-            if resp.status_code == 200:
-                data = resp.json()
-                return data.get("rag_context", str(data))
-            else:
-                return f"[⚠] RAG Fetch error: HTTP {resp.status_code}"
-    except Exception as e:
-        return f"[⚠] RAG Fetch failed: {str(e)}"
 
 async def evaluate_vigilante_episode(request: VigilanteRequest) -> ExpertOpinion:
     """
@@ -37,7 +8,7 @@ async def evaluate_vigilante_episode(request: VigilanteRequest) -> ExpertOpinion
     Inyecta como contexto el historial que trae n8n desde Postgres.
     """
     # 1. Fetch Contexto Histórico (RAG vía n8n)
-    memory_context = await fetch_rag_memory_from_n8n(request.symbol)
+    memory_context = await rag_client.fetch_rag_memory(request.symbol)
     
     # 2. Requisitos estrictos de salida del LLM
     system_prompt = f"""
@@ -73,7 +44,7 @@ async def evaluate_vigilante_episode(request: VigilanteRequest) -> ExpertOpinion
     RSI: {request.rsi_value if request.rsi_value else "Unknown"}
     """
     
-    client = get_groq_client()
+    client = rag_client.get_groq_client()
     
     try:
         response = await client.chat.completions.create(
@@ -81,7 +52,7 @@ async def evaluate_vigilante_episode(request: VigilanteRequest) -> ExpertOpinion
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            model="llama3-70b-8192", 
+            model="llama-3.1-8b-instant", 
             response_format={"type": "json_object"},
             temperature=0.0
         )
