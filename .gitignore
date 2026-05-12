@@ -29,3 +29,8 @@ build/
 
 # pytest
 .pytest_cache/
+
+# AI tooling (generated / local-only)
+.claude/
+.codex/
+graphify-out/
