@@ -5,7 +5,7 @@ REST API for n8n webhooks and external integrations.
 MCP Server is mounted at /mcp for Streamable HTTP transport.
 
 Usage:
-    uvicorn main:app --reload --port 8100
+    uvicorn main:app --reload --port 8090
 """
 
 from __future__ import annotations
@@ -15,10 +15,12 @@ import sys
 import os
 import logging
 import asyncio
+import hmac
 from time import perf_counter
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from pydantic import ValidationError
@@ -27,7 +29,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import agents.rag_client as rag_client
 
-from fastapi import Body, FastAPI, HTTPException, Response
+from fastapi import Body, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -53,6 +55,7 @@ from utils.context_extractors import (
     get_episode_events,
     get_nested,
 )
+from utils.win_rate_context import get_win_rate_context
 from metrics import (
     AGENT_CHAT_LATENCY,
     AGENT_CHAT_REQUESTS_TOTAL,
@@ -73,6 +76,7 @@ from metrics import (
     ORION_INFO,
     RELAY_LATENCY,
     RELAY_REQUESTS_TOTAL,
+    initialize_integration_metrics,
     track_enrichment,
     track_expert_opinion,
 )
@@ -88,6 +92,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger("orion")
 
+
+class _HealthMetricsFilter(logging.Filter):
+    """Suppress uvicorn access-log lines for /health and /metrics endpoints.
+
+    These are polled every few seconds by Docker and Prometheus and drown out
+    meaningful committee/agent log lines.
+    """
+
+    _SKIP = frozenset(["/health", "/actuator/health", "/metrics"])
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        return not any(path in msg for path in self._SKIP)
+
+
+# Apply to uvicorn access logger so /health and /metrics are silent
+_uvicorn_access = logging.getLogger("uvicorn.access")
+_uvicorn_access.addFilter(_HealthMetricsFilter())
+
 # Build the MCP ASGI app once so its routes and lifespan can be attached
 # to the main FastAPI app without double-prefixing the transport path.
 mcp_http_app = mcp_server_instance.streamable_http_app()
@@ -100,6 +123,7 @@ mcp_http_app = mcp_server_instance.streamable_http_app()
 async def lifespan(app: FastAPI):
     async with mcp_http_app.router.lifespan_context(mcp_http_app):
         ORION_INFO.info({"version": app.version, "environment": os.getenv("SPRING_PROFILES_ACTIVE", "standalone")})
+        initialize_integration_metrics()
         logger.info("🌌 Orion Consultant starting on port %d", settings.port)
         logger.info("🔌 MCP Server mounted at /mcp/ (StreamableHTTP)")
         logger.info("📡 REST API available at /api/v1/")
@@ -134,8 +158,34 @@ Instrumentator(
     should_group_status_codes=False,
 ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
+# ── API Key middleware ─────────────────────────────────
+# Endpoints that don't require authentication (infra / observability)
+_AUTH_EXEMPT = {"/health", "/actuator/health", "/metrics", "/docs", "/openapi.json", "/redoc"}
+
+
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    """Validate X-API-Key header on all non-exempt endpoints.
+
+    If ``ORION_API_KEY`` is not set (empty string), authentication is skipped
+    so local dev works without extra config. Set the variable in production.
+    """
+    if settings.api_key and request.url.path not in _AUTH_EXEMPT:
+        provided = request.headers.get("X-API-Key", "")
+        if not hmac.compare_digest(provided, settings.api_key):
+            logger.warning(
+                "auth_rejected path=%s remote=%s",
+                request.url.path,
+                request.client.host if request.client else "unknown",
+            )
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Invalid or missing X-API-Key"},
+            )
+    return await call_next(request)
+
 # ── Attach MCP Server routes (StreamableHTTP) ────────
-# n8n MCP Client connects to: http://orion-consultant:8100/mcp/
+# n8n MCP Client connects to: http://orion-consultant:8090/mcp/
 app.router.routes.extend(mcp_http_app.routes)
 
 
@@ -151,6 +201,21 @@ async def _build_committee_verdict(signal: SignalRequest) -> CommitteeVerdict:
     episode_events = get_episode_events(signal)
     episode_checkpoints = get_episode_checkpoints(signal)
     confirmations = get_confirmations(signal)
+
+    # Offline scorer context — resolved once per consultation from in-memory cache
+    win_rate_ctx = get_win_rate_context(
+        signal.symbol,
+        fsm_phase=signal.fsm_phase,
+        entry_regime=(
+            signal.analysis_context.get("entry_regime")
+            if isinstance(signal.analysis_context, dict) else None
+        ),
+        orion_verdict=None,  # not yet known at entry time
+        entry_adx=signal.adx_m15,
+        entry_window_open=signal.entry_window_open,
+        sar_adx_signal=signal.sar_adx_signal,
+        direction=signal.direction.value,
+    )
 
     async def _measure_expert(expert: str, coro: Any) -> ExpertOpinion:
         started = perf_counter()
@@ -184,6 +249,8 @@ async def _build_committee_verdict(signal: SignalRequest) -> CommitteeVerdict:
                 account_context=signal.account_context,
                 episode_context=episode_context,
                 episode_checkpoints=episode_checkpoints,
+                performance_context=signal.performance_context,
+                win_rate_context=win_rate_ctx,
             ),
         ),
         _measure_expert(
@@ -228,14 +295,6 @@ async def _build_committee_verdict(signal: SignalRequest) -> CommitteeVerdict:
                 episode_events=episode_events,
             ),
         ),
-    )
-
-    logger.info(
-        "committee opinions trace=%s -> %s | %s | %s",
-        signal.trace_id or "n/a",
-        _format_expert_opinion(opinions[0]),
-        _format_expert_opinion(opinions[1]),
-        _format_expert_opinion(opinions[2]),
     )
 
     approved = sum(1 for o in opinions if o.verdict == Verdict.APPROVE)
@@ -286,9 +345,21 @@ async def consult_vigilante(request: VigilanteRequest):
 
 
 def _join_url(base_url: str, path: str) -> str:
-    """Join a base URL with a relative path or return absolute paths untouched."""
-    if path.startswith("http://") or path.startswith("https://"):
-        return path
+    """Join a base URL with a relative path.
+
+    Absolute URLs in ``path`` are rejected to prevent SSRF: all outbound
+    requests must go through the configured base URLs (n8n / Java bot), never
+    to an arbitrary host supplied by the caller.
+    """
+    parsed = urlsplit(path.strip())
+    if parsed.scheme or parsed.netloc:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "webhookPath must be a relative path, not an absolute URL. "
+                "Absolute destinations are not permitted."
+            ),
+        )
     return f"{base_url.rstrip('/')}/{path.lstrip('/')}"
 
 
@@ -393,8 +464,16 @@ def _signal_log_context(signal: SignalRequest) -> dict[str, Any]:
         "bias": signal.bias,
         "entry_window_open": signal.entry_window_open,
         "episode_state": episode_context.get("state"),
-        "confirmations": sorted(confirmations.keys()) if confirmations else [],
+        "confirmations": _confirmed_names(confirmations),
     }
+
+
+def _confirmed_names(confirmations: dict[str, Any]) -> list[str]:
+    return sorted(
+        key
+        for key, value in confirmations.items()
+        if isinstance(value, bool) and value
+    )
 
 
 def _format_expert_opinion(opinion: ExpertOpinion) -> str:
@@ -402,6 +481,55 @@ def _format_expert_opinion(opinion: ExpertOpinion) -> str:
         f"{opinion.expert.value}={opinion.verdict.value}"
         f"({opinion.confidence:.2f}) reason={opinion.reason[:180]}"
     )
+
+
+def _compute_rr(entry: float, sl: float, tp: float) -> float | None:
+    """Risk/reward ratio. Returns None when SL == entry (division by zero)."""
+    risk = abs(entry - sl)
+    reward = abs(tp - entry)
+    if risk == 0:
+        return None
+    return round(reward / risk, 2)
+
+
+def _dominant_blockers(signal: SignalRequest, opinions: list[ExpertOpinion]) -> list[str]:
+    """Collect explicit blocking reasons from deterministic gates and REJECT opinions."""
+    blockers: list[str] = []
+    if not signal.entry_window_open:
+        blockers.append("entry_window_closed")
+    if signal.sar_adx_signal is not None and signal.sar_adx_signal == 0:
+        blockers.append("sar_adx_signal_zero")
+    if signal.sar_adx_blocking:
+        blockers.append("sar_adx_blocking")
+    if signal.macro_structure_ok is False:
+        blockers.append("macro_structure_not_ok")
+    sl_tp_valid = (
+        signal.stop_loss > 0
+        and signal.take_profit > 0
+        and signal.stop_loss != signal.entry_price
+        and signal.take_profit != signal.entry_price
+    )
+    if not sl_tp_valid:
+        blockers.append("sl_tp_invalid")
+    for op in opinions:
+        if op.verdict.value == "REJECT":
+            # Extract a short label from the reason (first ~40 chars, no whitespace mess)
+            short = op.reason.strip()[:60].replace("\n", " ")
+            blockers.append(f"{op.expert.value}:{short}")
+    return blockers
+
+
+def _voting_policy(approved: int, rejected: int, final_verdict: str) -> str:
+    """Describe the voting policy that produced the final verdict."""
+    total = approved + rejected
+    hold_count = 3 - total
+    if approved >= 2:
+        return f"majority_approve({approved}/3)"
+    if rejected >= 2:
+        return f"majority_reject({rejected}/3)"
+    if hold_count >= 2:
+        return "majority_hold"
+    return f"split_{approved}A_{rejected}R_{hold_count}H->{final_verdict}"
 
 
 # ── Endpoints ─────────────────────────────────────────
@@ -435,31 +563,52 @@ async def consult_committee(payload: Any = Body(...)):
         direction=signal.direction.value,
     ).inc()
 
-    logger.info(
-        "committee request trace=%s symbol=%s dir=%s entry=%.2f sl=%.2f tp=%.2f equity=%.2f balance=%.2f ctx=%s",
-        signal.trace_id or "n/a",
-        signal.symbol,
-        signal.direction.value,
-        signal.entry_price,
-        signal.stop_loss,
-        signal.take_profit,
-        signal.equity,
-        signal.balance,
-        _signal_log_context(signal),
-    )
-
     verdict = await _build_committee_verdict(signal)
+    latency_ms = round((perf_counter() - started) * 1000)
 
-    logger.info(
-        "committee verdict trace=%s final=%s approved=%d rejected=%d summary=%s",
-        signal.trace_id or "n/a",
-        verdict.final_verdict.value,
-        verdict.approved_count,
-        verdict.rejected_count,
-        verdict.summary,
+    rr = _compute_rr(signal.entry_price, signal.stop_loss, signal.take_profit)
+    votes = {op.expert.value: op.verdict.value for op in verdict.opinions}
+    policy = _voting_policy(verdict.approved_count, verdict.rejected_count, verdict.final_verdict.value)
+    blockers = _dominant_blockers(signal, verdict.opinions)
+
+    # Deterministic pre-LLM gate summary (logged inline for fast triage)
+    sl_tp_valid = (
+        signal.stop_loss > 0
+        and signal.take_profit > 0
+        and signal.stop_loss != signal.entry_price
+        and signal.take_profit != signal.entry_price
     )
+    logger.info(
+        "committee.verdict %s",
+        json.dumps(
+            {
+                "event": "committee.verdict",
+                "trace_id": signal.trace_id or "n/a",
+                "symbol": signal.symbol,
+                "side": signal.direction.value,
+                "entry": signal.entry_price,
+                "sl": signal.stop_loss,
+                "tp": signal.take_profit,
+                "rr": rr,
+                "equity": signal.equity,
+                "fsm_phase": signal.fsm_phase,
+                "entry_window_open": signal.entry_window_open,
+                "sar_adx_signal": signal.sar_adx_signal,
+                "sar_adx_blocking": signal.sar_adx_blocking,
+                "macro_structure_ok": signal.macro_structure_ok,
+                "sl_tp_valid": sl_tp_valid,
+                "votes": votes,
+                "final": verdict.final_verdict.value,
+                "policy": policy,
+                "dominant_blockers": blockers,
+                "latency_ms": latency_ms,
+            },
+            ensure_ascii=False,
+        ),
+    )
+
     CONSULT_VERDICTS_TOTAL.labels(final_verdict=verdict.final_verdict.value).inc()
-    CONSULT_LATENCY.observe(perf_counter() - started)
+    CONSULT_LATENCY.observe(latency_ms / 1000)
 
     return verdict
 
@@ -502,6 +651,7 @@ async def consult_expert(expert_name: ExpertName, signal: Any = Body(...)):
             sar_adx_blocking=signal.sar_adx_blocking,
             range_to_atr=signal.range_to_atr,
             account_context=signal.account_context,
+            performance_context=signal.performance_context,
         )
     elif expert_name == ExpertName.TREND_ANALYZER:
         return await evaluate_trend(
@@ -753,144 +903,3 @@ async def agent_health():
             "webhook_path": settings.n8n_agent_chat_webhook_path,
             "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000),
         }
-
-    available = False
-    try:
-        await _get_text(
-            _join_url(settings.n8n_base_url, settings.n8n_health_path),
-            timeout=10.0,
-        )
-        available = True
-    except httpx.HTTPError:
-        available = False
-
-    return {
-        "agent_available": available,
-        "agent_enabled": True,
-        "webhook_path": settings.n8n_agent_chat_webhook_path,
-        "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000),
-    }
-
-
-async def _forward_notification(
-    payload: dict[str, Any],
-    webhook_path: str,
-    notification_type: str,
-) -> Response:
-    """Forward a NotificationPort-compatible payload to the configured n8n webhook."""
-    url = _join_url(settings.n8n_base_url, webhook_path)
-    started = perf_counter()
-    logger.info(
-        "notification relay type=%s target=%s payload_keys=%s",
-        notification_type,
-        url,
-        sorted(payload.keys()) if isinstance(payload, dict) else [],
-    )
-
-    try:
-        await _post_without_response(
-            url,
-            payload,
-            timeout=settings.notification_timeout_seconds,
-        )
-    except httpx.HTTPError as exc:
-        NOTIFICATION_REQUESTS_TOTAL.labels(
-            notification_type=notification_type,
-            status="error",
-        ).inc()
-        RELAY_REQUESTS_TOTAL.labels(
-            route="notification",
-            target="n8n",
-            status="error",
-        ).inc()
-        logger.exception("❌ Failed to forward notification to n8n: %s", webhook_path)
-        raise HTTPException(
-            status_code=502,
-            detail=f"Notification forwarding failed for '{webhook_path}': {exc}",
-        ) from exc
-    finally:
-        RELAY_LATENCY.labels(route="notification", target="n8n").observe(
-            perf_counter() - started
-        )
-
-    RELAY_REQUESTS_TOTAL.labels(
-        route="notification",
-        target="n8n",
-        status="success",
-    ).inc()
-    NOTIFICATION_REQUESTS_TOTAL.labels(
-        notification_type=notification_type,
-        status="success",
-    ).inc()
-    logger.info("notification relay success type=%s target=%s", notification_type, url)
-    return Response(status_code=202)
-
-
-@app.post("/api/notifications/trading-decision", status_code=202, tags=["Notifications"])
-async def notify_trading_decision(payload: dict[str, Any]):
-    """Receive trading-decision notifications from the Java service and relay to n8n."""
-    return await _forward_notification(
-        payload,
-        settings.n8n_trading_decision_webhook_path,
-        "trading-decision",
-    )
-
-
-@app.post("/api/notifications/trade-executed", status_code=202, tags=["Notifications"])
-async def notify_trade_executed(payload: dict[str, Any]):
-    """Receive trade-executed notifications from the Java service and relay to n8n."""
-    return await _forward_notification(
-        payload,
-        settings.n8n_trade_executed_webhook_path,
-        "trade-executed",
-    )
-
-
-@app.post("/api/notifications/trade-closed", status_code=202, tags=["Notifications"])
-async def notify_trade_closed(payload: dict[str, Any]):
-    """Receive trade-closed notifications from the Java service and relay to n8n."""
-    return await _forward_notification(
-        payload,
-        settings.n8n_trade_closed_webhook_path,
-        "trade-closed",
-    )
-
-
-@app.post("/api/notifications/trading-error", status_code=202, tags=["Notifications"])
-async def notify_trading_error(payload: dict[str, Any]):
-    """Receive trading errors from the Java service and relay to n8n."""
-    return await _forward_notification(
-        payload,
-        settings.n8n_trading_error_webhook_path,
-        "trading-error",
-    )
-
-
-@app.post("/api/notifications/performance-metrics", status_code=202, tags=["Notifications"])
-async def notify_performance_metrics(payload: dict[str, Any]):
-    """Receive performance metrics from the Java service and relay to n8n."""
-    return await _forward_notification(
-        payload,
-        settings.n8n_performance_metrics_webhook_path,
-        "performance-metrics",
-    )
-
-
-# ── Start function (for pyproject.toml script) ───────
-
-
-def start():
-    """Entry point for `orion-api` CLI script."""
-    import uvicorn
-
-    uvicorn.run(
-        "main:app",
-        host=settings.host,
-        port=settings.port,
-        log_level=settings.log_level,
-        reload=False,
-    )
-
-
-if __name__ == "__main__":
-    start()

@@ -31,10 +31,10 @@ cp .env.example .env
 ### 3. Ejecutar el servidor FastAPI + MCP
 
 ```bash
-uvicorn main:app --reload --port 8100
+uvicorn main:app --reload --port 8090
 ```
 
-Abre [http://localhost:8100/docs](http://localhost:8100/docs) para ver la documentación Swagger.
+Abre [http://localhost:8090/docs](http://localhost:8090/docs) para ver la documentación Swagger.
 
 > **MCP Server** se monta automáticamente en `/mcp` vía StreamableHTTP.
 
@@ -61,8 +61,27 @@ docker-compose up -d --build
 ### Verificar
 
 ```bash
-curl http://localhost:8100/health
+curl http://localhost:8090/health
 ```
+
+---
+
+## 🔐 Autenticación
+
+Todos los endpoints (excepto `/health`, `/actuator/health`, `/metrics`, `/docs`) requieren el header:
+
+```
+X-API-Key: <valor de ORION_API_KEY>
+```
+
+Configura la variable en tu `.env` o en el `docker-compose.yml`:
+
+```properties
+ORION_API_KEY=your-secret-key-here
+```
+
+> Si `ORION_API_KEY` está vacío, la autenticación se deshabilita (solo para desarrollo local).  
+> **Nunca dejar vacío en producción.** Rotar la key si la imagen fue construida sin `.dockerignore`.
 
 ---
 
@@ -156,7 +175,7 @@ curl http://localhost:8100/health
 ```json
 {
   "transport": "streamableHttp",
-  "url": "http://orion-consultant:8100/mcp/"
+  "url": "http://orion-consultant:8090/mcp/"
 }
 ```
 
@@ -206,7 +225,7 @@ orion-consultant/
 
 1. **Nodo Webhook** → Recibe JSON del Java Bot
 2. **Nodo AI Agent** → Usa las MCP Tools de Orion
-3. **Nodo MCP Client** → `http://orion-consultant:8100/mcp/`
+3. **Nodo MCP Client** → `http://orion-consultant:8090/mcp/`
 4. **AI decide** → Interpreta opiniones con LLM
 5. **Nodo HTTP** → Devuelve veredicto enriquecido
 

@@ -93,6 +93,28 @@ def test_trigger_workflow_calls_n8n_webhook(monkeypatch):
     assert response.json() == {"ok": True}
 
 
+def test_trigger_workflow_rejects_absolute_webhook_url():
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/n8n/trigger-workflow",
+        json={"webhookPath": "https://example.com/webhook", "payload": {"foo": "bar"}},
+    )
+
+    assert response.status_code == 400
+
+
+def test_trigger_workflow_rejects_protocol_relative_webhook_url():
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/n8n/trigger-workflow",
+        json={"webhookPath": "//example.com/webhook", "payload": {"foo": "bar"}},
+    )
+
+    assert response.status_code == 400
+
+
 def test_n8n_status_reports_availability(monkeypatch):
     client = TestClient(app)
 

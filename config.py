@@ -72,6 +72,16 @@ class Settings(BaseSettings):
         alias="ORION_JAVA_PROCESS_EVENT_PATH",
     )
 
+    # ── Security ──────────────────────────────────────
+    api_key: str = Field(
+        default="",
+        alias="ORION_API_KEY",
+        description=(
+            "Shared secret for X-API-Key header validation. "
+            "If empty, auth is disabled (dev only). Set in production."
+        ),
+    )
+
     # ── MCP ───────────────────────────────────────────
     mcp_transport: str = Field(default="stdio", alias="ORION_MCP_TRANSPORT")
 

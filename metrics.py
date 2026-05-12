@@ -182,3 +182,38 @@ def track_expert_opinion(opinion) -> None:
         expert=opinion.expert.value,
         verdict=opinion.verdict.value,
     ).observe(opinion.confidence)
+
+
+def initialize_integration_metrics() -> None:
+    """Create zero-valued relay series so Grafana does not render empty panels."""
+    for route, target in [
+        ("process_event", "java"),
+        ("trigger_workflow", "n8n"),
+        ("agent_chat", "n8n"),
+        ("notification", "n8n"),
+    ]:
+        RELAY_LATENCY.labels(route=route, target=target)
+        for status in ["success", "error", "fallback", "disabled"]:
+            RELAY_REQUESTS_TOTAL.labels(route=route, target=target, status=status)
+
+    for status in ["up", "down"]:
+        N8N_HEALTHCHECK_TOTAL.labels(status=status)
+
+    for status in ["success", "fallback"]:
+        JAVA_PROCESS_EVENT_TOTAL.labels(status=status)
+
+    for notification_type in [
+        "trading-decision",
+        "trade-executed",
+        "trade-closed",
+        "trading-error",
+        "performance-metrics",
+    ]:
+        for status in ["success", "error"]:
+            NOTIFICATION_REQUESTS_TOTAL.labels(
+                notification_type=notification_type,
+                status=status,
+            )
+
+    for status in ["success", "error", "disabled"]:
+        AGENT_CHAT_REQUESTS_TOTAL.labels(status=status)

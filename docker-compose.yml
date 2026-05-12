@@ -36,6 +36,8 @@ services:
       - ORION_N8N_WEBHOOK_URL=${ORION_N8N_WEBHOOK_URL:-http://n8n:5678/webhook}
       - ORION_N8N_AGENT_CHAT_ENABLED=${ORION_N8N_AGENT_CHAT_ENABLED:-false}
       - ORION_JAVA_BOT_URL=${ORION_JAVA_BOT_URL:-http://llm-trade-nx-dev:8080}
+      # Security
+      - ORION_API_KEY=${ORION_API_KEY:-}
     networks:
       - llm-trade-network
     healthcheck:

@@ -1,7 +1,7 @@
 """
-Orion Consultant — Pydantic models for the API and MCP tools.
+Orion Consultant - Pydantic models for the API and MCP tools.
 
-These schemas define the JSON contract between Java Bot ↔ n8n ↔ Orion.
+These schemas define the JSON contract between Java Bot <-> n8n <-> Orion.
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ from typing import Optional, Any
 from pydantic import BaseModel, Field
 
 
-# ── Enums ─────────────────────────────────────────────
+# ---- Enums -------------------------------------------------------
 
 
 class SignalDirection(str, Enum):
@@ -33,7 +33,7 @@ class ExpertName(str, Enum):
     PATTERN_EXPERT = "pattern_expert"
     VIGILANTE_AGENT = "vigilante_agent"
 
-# ── Request ───────────────────────────────────────────
+# ---- Request -----------------------------------------------------
 
 
 class SignalRequest(BaseModel):
@@ -54,11 +54,11 @@ class SignalRequest(BaseModel):
     trend_h1: Optional[str] = Field(default=None, examples=["bullish"])
     trend_h4: Optional[str] = Field(default=None, examples=["bullish"])
 
-    # ── Enrichment: Trace & strategy ──────────────────────
+    # Enrichment: Trace & strategy
     trace_id: Optional[str] = Field(default=None, examples=["NA-1774987672997"])
     strategy_id: Optional[str] = Field(default=None, examples=["step_index_confluence_v1"])
 
-    # ── Enrichment: FSM state ─────────────────────────────
+    # Enrichment: FSM state
     fsm_phase: Optional[str] = Field(default=None, examples=["TREND"])
     step_index_type: Optional[str] = Field(default=None, examples=["CLASSIC"])
     current_clv: Optional[float] = Field(default=None, examples=[0.62])
@@ -67,7 +67,7 @@ class SignalRequest(BaseModel):
     sar_adx_signal: Optional[int] = Field(default=None, examples=[1])
     sar_adx_blocking: Optional[bool] = Field(default=None, examples=[False])
 
-    # ── Enrichment: Technical indicators (M15) ────────────
+    # Enrichment: Technical indicators (M15)
     adx_m15: Optional[float] = Field(default=None, examples=[28.5])
     plus_di_m15: Optional[float] = Field(default=None, examples=[31.2])
     minus_di_m15: Optional[float] = Field(default=None, examples=[14.8])
@@ -81,20 +81,20 @@ class SignalRequest(BaseModel):
     bb_kc_ratio: Optional[float] = Field(default=None, examples=[0.92])
     bb_kc_ratio_macro: Optional[float] = Field(default=None, examples=[0.82])
 
-    # ── Enrichment: actual MTF source of truth ────────────
+    # Enrichment: actual MTF source of truth
     trend_timeframe: Optional[str] = Field(default=None, examples=["H1"])
     macro_timeframe: Optional[str] = Field(default=None, examples=["M15"])
     micro_timeframe: Optional[str] = Field(default=None, examples=["M5"])
     trend_direction: Optional[str] = Field(default=None, examples=["BULLISH"])
 
-    # ── Enrichment: Episode / bias ────────────────────────
+    # Enrichment: Episode / bias
     bias: Optional[int] = Field(default=None, examples=[1])
     entry_window_open: Optional[bool] = Field(default=None, examples=[True])
 
-    # ── Enrichment: Tactical confidence ───────────────────
+    # Enrichment: Tactical confidence
     tactical_confidence: Optional[float] = Field(default=None, examples=[0.85])
 
-    # ── Enrichment: Flexible context blocks ───────────────
+    # Enrichment: Flexible context blocks
     decision_context: Optional[dict[str, Any]] = Field(default=None)
     analysis_context: Optional[dict[str, Any]] = Field(default=None)
     episode_summary: Optional[dict[str, Any]] = Field(default=None)
@@ -103,6 +103,17 @@ class SignalRequest(BaseModel):
     confirmations: Optional[dict[str, Any]] = Field(default=None)
     episode_events: Optional[list[dict[str, Any]]] = Field(default=None)
     episode_checkpoints: Optional[list[dict[str, Any]]] = Field(default=None)
+
+    # Enrichment: Historical performance context
+    # Populated by the Java bot from trade_results joined with trades.
+    # Expected shape:
+    #   {
+    #     "pnl_history": [1.5, -0.8, 2.1, ...],  # PnL per closed trade (chronological)
+    #     "n_trades": 42,                          # total closed trades
+    #     "win_rate": 0.61,                        # optional override
+    #     "lookback": 50                           # optional: how many recent trades included
+    #   }
+    performance_context: Optional[dict[str, Any]] = Field(default=None)
 
     # Metadata
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -122,7 +133,7 @@ class VigilanteRequest(BaseModel):
     metadata: Optional[dict] = Field(default_factory=dict)
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-# ── Responses ─────────────────────────────────────────
+# ---- Responses ---------------------------------------------------
 
 
 class ExpertOpinion(BaseModel):
@@ -150,5 +161,5 @@ class HealthResponse(BaseModel):
 
     status: str = "ok"
     service: str = "orion-consultant"
-    version: str = "0.1.0"
+    version: str = "0.2.0"
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

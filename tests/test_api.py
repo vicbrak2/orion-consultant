@@ -12,13 +12,15 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from main import app
+from main import app, _confirmed_names
+from config import settings
 from models.schemas import Verdict
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
     """FastAPI test client."""
+    monkeypatch.setattr(settings, "api_key", "")
     return TestClient(app)
 
 
@@ -42,6 +44,82 @@ class TestHealthEndpoint:
         assert response.status_code == 200
         assert "orion_consult_requests_total" in response.text
         assert "http_requests_total" in response.text or "http_request_duration" in response.text
+
+
+class TestApiKeyMiddleware:
+    """Tests for optional X-API-Key enforcement."""
+
+    def test_auth_disabled_when_api_key_empty(self, client: TestClient, monkeypatch):
+        monkeypatch.setattr(settings, "api_key", "")
+        response = client.post(
+            "/api/v1/consult",
+            json={
+                "symbol": "Step Index",
+                "direction": "BUY",
+                "entry_price": 5432.10,
+                "stop_loss": 5400.00,
+                "take_profit": 5500.00,
+                "equity": 1000.0,
+                "balance": 1050.0,
+            },
+        )
+        assert response.status_code == 200
+
+    def test_auth_rejects_missing_api_key_when_enabled(self, client: TestClient, monkeypatch):
+        monkeypatch.setattr(settings, "api_key", "secret")
+        response = client.post(
+            "/api/v1/consult",
+            json={
+                "symbol": "Step Index",
+                "direction": "BUY",
+                "entry_price": 5432.10,
+                "stop_loss": 5400.00,
+                "take_profit": 5500.00,
+                "equity": 1000.0,
+                "balance": 1050.0,
+            },
+        )
+        assert response.status_code == 401
+
+    def test_auth_accepts_valid_api_key_when_enabled(self, client: TestClient, monkeypatch):
+        monkeypatch.setattr(settings, "api_key", "secret")
+        response = client.post(
+            "/api/v1/consult",
+            headers={"X-API-Key": "secret"},
+            json={
+                "symbol": "Step Index",
+                "direction": "BUY",
+                "entry_price": 5432.10,
+                "stop_loss": 5400.00,
+                "take_profit": 5500.00,
+                "equity": 1000.0,
+                "balance": 1050.0,
+            },
+        )
+        assert response.status_code == 200
+
+    def test_health_is_exempt_when_auth_enabled(self, client: TestClient, monkeypatch):
+        monkeypatch.setattr(settings, "api_key", "secret")
+        response = client.get("/health")
+        assert response.status_code == 200
+
+
+class TestSignalLogContext:
+    """Tests compact signal logging helpers."""
+
+    def test_confirmed_names_only_includes_boolean_true_confirmations(self):
+        confirmations = {
+            "sar_adx_confirmed": True,
+            "entry_window_open": False,
+            "pattern_name": "CLASSIC",
+            "macro_structure_confirmed": True,
+            "nullable": None,
+        }
+
+        assert _confirmed_names(confirmations) == [
+            "macro_structure_confirmed",
+            "sar_adx_confirmed",
+        ]
 
 
 # ── Committee Endpoint ────────────────────────────────

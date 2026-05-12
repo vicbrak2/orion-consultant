@@ -1,0 +1,44 @@
+# Secrets and local credentials
+.env
+.env.*
+*.env
+*.pem
+*.key
+*.p12
+*.sqlite
+*.sqlite3
+*.db
+n8n_cookies.txt
+n8n_login.json
+*secret*
+*credentials*
+
+# VCS and IDE metadata
+.git/
+.github/
+.idea/
+.vscode/
+
+# Python/runtime artifacts
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.pyc
+*.pyo
+*.log
+logs/
+tmp/
+temp/
+
+# Generated/package artifacts
+build/
+dist/
+*.egg-info/
+htmlcov/
+coverage.xml
+
+# Graphify generated output
+graphify-out/

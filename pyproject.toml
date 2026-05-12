@@ -1,6 +1,6 @@
 [project]
 name = "orion-consultant"
-version = "0.1.0"
+version = "0.2.0"
 description = "Orion Expert Committee — MCP + FastAPI microservice for trading decisions"
 requires-python = ">=3.11"
 dependencies = [

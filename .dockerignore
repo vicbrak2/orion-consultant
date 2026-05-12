@@ -1,0 +1,46 @@
+# ── Secrets & local credentials ───────────────────────
+.env
+.env.*
+*.env
+n8n_cookies.txt
+n8n_login.json
+*.sqlite
+*.db
+
+# ── Git history ────────────────────────────────────────
+.git
+.gitignore
+
+# ── Python cache ──────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# ── Dev/test artifacts ────────────────────────────────
+tests/
+*.test.py
+test_*.py
+*_test.py
+coverage.xml
+.coverage
+htmlcov/
+
+# ── Docs & scripts ────────────────────────────────────
+*.md
+scripts/
+commit_vigilante.bat
+
+# ── Misc ──────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+tmp_*.py

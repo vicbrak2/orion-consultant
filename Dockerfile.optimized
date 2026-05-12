@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1.4
+
+# ── Build stage ───────────────────────────────────────
+FROM python:3.12-slim AS builder
+
+WORKDIR /app
+
+COPY requirements.txt .
+
+# Cache pip downloads for faster rebuilds
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# ── Runtime stage ─────────────────────────────────────
+FROM python:3.12-slim
+
+LABEL maintainer="Orion Consultant" \
+      description="Expert Committee for Step Index trading decisions" \
+      version="0.1.0" \
+      org.opencontainers.image.source="https://github.com/yourusername/orion-consultant"
+
+WORKDIR /app
+
+# Copy installed packages from builder
+COPY --from=builder /install /usr/local
+
+# Copy source code
+COPY . .
+
+# Non-root user for security
+RUN useradd --create-home orion && \
+    chown -R orion:orion /app
+
+USER orion
+
+# Expose FastAPI port
+EXPOSE 8090
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "from urllib.request import urlopen; urlopen('http://localhost:8090/health')" || exit 1
+
+# Environment
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1
+
+# Default: run the FastAPI server with Uvicorn
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8090", "--log-level", "info"]
