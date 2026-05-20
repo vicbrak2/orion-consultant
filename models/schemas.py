@@ -163,3 +163,66 @@ class HealthResponse(BaseModel):
     service: str = "orion-consultant"
     version: str = "0.2.0"
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+# ---- Strategic Bias (H1 async macro mandate) ---------------------
+
+
+class StrategicBiasMode(str, Enum):
+    BUY_MODE = "BUY_MODE"
+    SELL_MODE = "SELL_MODE"
+    HOLD = "HOLD"
+
+
+class StrategicBiasRequest(BaseModel):
+    """Periodic H1 request from Java scheduler for macro directional bias.
+
+    Does NOT include entry_price/SL/TP — this is a macro state snapshot,
+    not a per-signal evaluation.
+    """
+
+    symbol: str = Field(..., examples=["Step Index"])
+    equity: float = Field(..., gt=0, examples=[1000.0])
+    balance: float = Field(..., gt=0, examples=[1050.0])
+    current_volatility: float = Field(default=0.0, ge=0, examples=[150.0])
+
+    # Macro trend state
+    trend_h1: Optional[str] = Field(default=None, examples=["bullish"])
+    trend_h4: Optional[str] = Field(default=None, examples=["bullish"])
+    trend_direction: Optional[str] = Field(default=None, examples=["BULLISH"])
+    macro_structure_ok: Optional[bool] = Field(default=None, examples=[True])
+
+    # FSM / enrichment
+    fsm_phase: Optional[str] = Field(default=None, examples=["TREND"])
+    adx_macro: Optional[float] = Field(default=None, examples=[28.5])
+    bb_kc_ratio_macro: Optional[float] = Field(default=None, examples=[0.82])
+    current_clv: Optional[float] = Field(default=None, examples=[0.62])
+    sar_adx_blocking: Optional[bool] = Field(default=None, examples=[False])
+    range_to_atr: Optional[float] = Field(default=None, examples=[1.36])
+
+    # Historical performance (optional — for lot fraction scaling)
+    performance_context: Optional[dict[str, Any]] = Field(default=None)
+
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class StrategicBiasResponse(BaseModel):
+    """H1 directional mandate from Orion. Cached by the Java scheduler.
+
+    The Java side must treat this as read-only until ``valid_until`` passes,
+    at which point it triggers a new refresh in the background.
+    """
+
+    symbol: str
+    bias: StrategicBiasMode
+    confidence: float = Field(..., ge=0.0, le=1.0, examples=[0.82])
+    reason: str
+    max_lot_fraction: float = Field(
+        default=1.0, ge=0.0, le=1.0,
+        description="Scalar applied to normal lot size. 0.5 = half size, 1.0 = full.",
+    )
+    valid_until: datetime = Field(
+        ...,
+        description="UTC timestamp after which this bias should be refreshed.",
+    )
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

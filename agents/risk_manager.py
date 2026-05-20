@@ -80,6 +80,19 @@ def _classic_risk_assessment(
             )
             risk_score += 0.2
 
+        # Structural SL floor for Step Index: minimum 15 steps (1.5 price units).
+        # A tighter SL is almost certain to be hit by normal tick noise.
+        if "step" in symbol.lower():
+            _STEP_SIZE = 0.1
+            _MIN_SL_STEPS = 15
+            risk_distance_steps = risk_distance / _STEP_SIZE
+            if risk_distance_steps < _MIN_SL_STEPS:
+                reasons.append(
+                    f"SL demasiado ajustado para Step Index "
+                    f"({risk_distance_steps:.0f} pasos < mínimo {_MIN_SL_STEPS})."
+                )
+                risk_score += 0.35
+
     # -- Enrichment: SAR+ADX blocking --
     if sar_adx_blocking is True:
         reasons.append("SAR+ADX bloquea la entrada - senal tecnica en contra.")

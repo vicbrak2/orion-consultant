@@ -230,6 +230,36 @@ class TestTrendEnrichment:
         assert opinion.confidence >= 0.6
 
     @pytest.mark.asyncio
+    async def test_neutral_clv_does_not_promote_bias_macro(self):
+        """CLV between 0.30 and 0.70 is noise and must not confirm direction."""
+        opinion = await evaluate_trend(
+            direction="BUY",
+            trend_h1=None,
+            trend_h4=None,
+            bias=1,
+            current_clv=0.62,
+            previous_clv=0.45,
+            macro_structure_ok=True,
+        )
+        assert opinion.verdict == Verdict.HOLD
+        assert "sin convicción" in opinion.reason
+
+    @pytest.mark.asyncio
+    async def test_contrary_clv_delta_does_not_confirm_direction(self):
+        """A BUY close in the lower 30% cannot be rescued by positive CLV delta."""
+        opinion = await evaluate_trend(
+            direction="BUY",
+            trend_h1=None,
+            trend_h4=None,
+            bias=1,
+            current_clv=0.25,
+            previous_clv=0.10,
+            macro_structure_ok=True,
+        )
+        assert opinion.verdict == Verdict.HOLD
+        assert "no reemplaza" in opinion.reason
+
+    @pytest.mark.asyncio
     async def test_entry_window_closed_adds_to_rejection(self):
         """Counter-trend + entry_window_open=False → higher rejection confidence."""
         base = await evaluate_trend(direction="BUY", trend_h1="bearish", trend_h4="bearish")

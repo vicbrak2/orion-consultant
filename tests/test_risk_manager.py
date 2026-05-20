@@ -138,6 +138,21 @@ class TestRiskManagerStopLoss:
 
     @pytest.mark.asyncio
 
+    async def test_step_index_stop_loss_below_floor_adds_risk(self):
+        """Step Index SL closer than 15 steps should be penalized as noise-sensitive."""
+        opinion = await evaluate_risk(
+            equity=1000.0,
+            balance=1000.0,
+            current_volatility=50.0,
+            symbol="Step Index",
+            entry_price=8000.0,
+            stop_loss=7999.5,  # 5 steps at 0.1
+        )
+        assert opinion.verdict == Verdict.HOLD
+        assert "mínimo 15" in opinion.reason
+
+    @pytest.mark.asyncio
+
     async def test_no_sl_provided(self):
         """When entry/SL not provided, skip SL check — don't penalize."""
         opinion = await evaluate_risk(

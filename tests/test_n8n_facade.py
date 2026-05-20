@@ -5,11 +5,17 @@ Tests for Orion's n8n integration facade.
 from __future__ import annotations
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 import main
 from main import app
 from config import settings
+
+
+@pytest.fixture(autouse=True)
+def disable_api_key(monkeypatch):
+    monkeypatch.setattr(settings, "api_key", "")
 
 
 def test_n8n_health_returns_up():

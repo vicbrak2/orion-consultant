@@ -18,7 +18,7 @@ import asyncio
 import hmac
 from time import perf_counter
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -42,6 +42,9 @@ from models.schemas import (
     ExpertName,
     Verdict,
     VigilanteRequest,
+    StrategicBiasMode,
+    StrategicBiasRequest,
+    StrategicBiasResponse,
 )
 from agents.risk_manager import evaluate_risk
 from agents.trend_analyzer import evaluate_trend
@@ -547,6 +550,123 @@ async def actuator_health_check():
     return HealthResponse()
 
 
+# ── Strategic Bias ─────────────────────────────────────────────────
+
+
+async def _compute_strategic_bias(req: StrategicBiasRequest) -> StrategicBiasResponse:
+    """Evaluate macro directional bias at H1 frequency.
+
+    Runs risk_manager + trend_analyzer for BUY and SELL in parallel.
+    No pattern_expert — this is a macro state evaluation, not a per-signal one.
+    """
+    rag_context = await rag_client.fetch_rag_memory(req.symbol)
+
+    # 1. Risk gate — is it safe to trade at all?
+    risk_opinion = await evaluate_risk(
+        equity=req.equity,
+        balance=req.balance,
+        current_volatility=req.current_volatility,
+        symbol=req.symbol,
+        rag_context=rag_context,
+        fsm_phase=req.fsm_phase,
+        macro_structure_ok=req.macro_structure_ok,
+        sar_adx_blocking=req.sar_adx_blocking,
+        range_to_atr=req.range_to_atr,
+        performance_context=req.performance_context,
+    )
+
+    valid_until = datetime.now(timezone.utc) + timedelta(hours=1)
+
+    if risk_opinion.verdict == Verdict.REJECT:
+        return StrategicBiasResponse(
+            symbol=req.symbol,
+            bias=StrategicBiasMode.HOLD,
+            confidence=risk_opinion.confidence,
+            reason=f"Risk gate blocked: {risk_opinion.reason}",
+            max_lot_fraction=0.0,
+            valid_until=valid_until,
+        )
+
+    # Lot fraction: HOLD from risk → cautious (0.5), APPROVE → full (1.0)
+    lot_fraction = 1.0 if risk_opinion.verdict == Verdict.APPROVE else 0.5
+
+    # 2. Evaluate both directions in parallel
+    buy_trend, sell_trend = await asyncio.gather(
+        evaluate_trend(
+            direction="BUY",
+            trend_h1=req.trend_h1,
+            trend_h4=req.trend_h4,
+            symbol=req.symbol,
+            rag_context=rag_context,
+            bias=1,
+            current_clv=req.current_clv,
+            macro_structure_ok=req.macro_structure_ok,
+            trend_direction=req.trend_direction,
+        ),
+        evaluate_trend(
+            direction="SELL",
+            trend_h1=req.trend_h1,
+            trend_h4=req.trend_h4,
+            symbol=req.symbol,
+            rag_context=rag_context,
+            bias=-1,
+            current_clv=req.current_clv,
+            macro_structure_ok=req.macro_structure_ok,
+            trend_direction=req.trend_direction,
+        ),
+    )
+
+    buy_ok = buy_trend.verdict == Verdict.APPROVE
+    sell_ok = sell_trend.verdict == Verdict.APPROVE
+
+    if buy_ok and not sell_ok:
+        return StrategicBiasResponse(
+            symbol=req.symbol,
+            bias=StrategicBiasMode.BUY_MODE,
+            confidence=round(min(buy_trend.confidence, 0.95), 2),
+            reason=f"Macro BUY: {buy_trend.reason}",
+            max_lot_fraction=lot_fraction,
+            valid_until=valid_until,
+        )
+
+    if sell_ok and not buy_ok:
+        return StrategicBiasResponse(
+            symbol=req.symbol,
+            bias=StrategicBiasMode.SELL_MODE,
+            confidence=round(min(sell_trend.confidence, 0.95), 2),
+            reason=f"Macro SELL: {sell_trend.reason}",
+            max_lot_fraction=lot_fraction,
+            valid_until=valid_until,
+        )
+
+    return StrategicBiasResponse(
+        symbol=req.symbol,
+        bias=StrategicBiasMode.HOLD,
+        confidence=0.55,
+        reason=(
+            f"No directional edge. BUY({buy_trend.verdict.value}): {buy_trend.reason} | "
+            f"SELL({sell_trend.verdict.value}): {sell_trend.reason}"
+        ),
+        max_lot_fraction=0.0,
+        valid_until=valid_until,
+    )
+
+
+@app.post("/api/v1/strategic-bias", response_model=StrategicBiasResponse, tags=["Strategic"])
+async def get_strategic_bias(request: StrategicBiasRequest):
+    """H1 macro directional mandate for Java scheduler.
+
+    Called periodically (not per tick) by the Java bot to pre-approve a
+    directional bias. The result is cached in Java and used to fast-gate
+    incoming tactical signals without a synchronous Orion call.
+    """
+    try:
+        return await _compute_strategic_bias(request)
+    except Exception as exc:
+        logger.error("strategic-bias failed: %s", exc, exc_info=True)
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @app.post("/api/v1/consult", response_model=CommitteeVerdict, tags=["Committee"])
 async def consult_committee(payload: Any = Body(...)):
     """
@@ -891,6 +1011,30 @@ async def agent_chat(request: dict[str, Any]):
         sorted(result.keys()) if isinstance(result, dict) else [],
     )
     return result
+
+
+@app.post("/api/notifications/trading-decision", status_code=202, tags=["n8n"])
+async def notify_trading_decision(payload: dict[str, Any]):
+    """Forward trading-decision notifications to the configured n8n webhook."""
+    webhook_url = _join_url(settings.n8n_base_url, "/webhook/trading-decision")
+    try:
+        await _post_without_response(webhook_url, payload, timeout=10.0)
+    except httpx.HTTPError as exc:
+        logger.exception("Failed to forward trading-decision notification to n8n.")
+        raise HTTPException(status_code=502, detail=f"n8n notification webhook failed: {exc}") from exc
+    return {"accepted": True}
+
+
+@app.post("/api/notifications/trading-error", status_code=202, tags=["n8n"])
+async def notify_trading_error(payload: dict[str, Any]):
+    """Forward trading-error notifications to the configured n8n webhook."""
+    webhook_url = _join_url(settings.n8n_base_url, "/webhook/trading-error")
+    try:
+        await _post_without_response(webhook_url, payload, timeout=10.0)
+    except httpx.HTTPError as exc:
+        logger.exception("Failed to forward trading-error notification to n8n.")
+        raise HTTPException(status_code=502, detail=f"n8n notification webhook failed: {exc}") from exc
+    return {"accepted": True}
 
 
 @app.get("/api/agent/health", tags=["n8n"])

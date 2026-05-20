@@ -277,6 +277,34 @@ class TestIndividualExpertEndpoint:
         assert response.status_code == 422
 
 
+class TestStrategicBiasEndpoint:
+    """Tests for POST /api/v1/strategic-bias."""
+
+    def test_buy_bias_returns_hourly_mandate(self, client: TestClient):
+        payload = {
+            "symbol": "Step Index",
+            "equity": 1000.0,
+            "balance": 1000.0,
+            "current_volatility": 80.0,
+            "trend_h1": "bullish",
+            "trend_h4": "bullish",
+            "trend_direction": "bullish",
+            "macro_structure_ok": True,
+            "current_clv": 0.75,
+            "sar_adx_blocking": False,
+            "range_to_atr": 1.4,
+        }
+        response = client.post("/api/v1/strategic-bias", json=payload)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["symbol"] == "Step Index"
+        assert data["bias"] == "BUY_MODE"
+        assert 0.0 <= data["confidence"] <= 1.0
+        assert data["max_lot_fraction"] > 0.0
+        assert data["valid_until"]
+
+
 # ── JSON Contract Validation ─────────────────────────
 
 

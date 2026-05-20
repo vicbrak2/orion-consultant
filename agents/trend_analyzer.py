@@ -142,18 +142,32 @@ def _classic_trend_assessment(
 
     # ── Enrichment: CLV momentum ──────────────────────────
     clv_supporting = False
+    # CLV threshold raised to 0.70/0.30 to filter weak closes in Step Index.
+    # A BUY close must be in the upper 30% of the candle's range; SELL in the lower 30%.
+    CLV_BUY_THRESHOLD = 0.70
+    CLV_SELL_THRESHOLD = 0.30
+
     if current_clv is not None:
-        if signal_dir == "BUY" and current_clv > 0.5:
+        if signal_dir == "BUY" and current_clv >= CLV_BUY_THRESHOLD:
             clv_supporting = True
-            reasons.append(f"CLV favorece BUY ({current_clv:.2f}).")
-        elif signal_dir == "SELL" and current_clv < 0.5:
+            reasons.append(f"CLV confirma BUY fuerte ({current_clv:.2f} >= {CLV_BUY_THRESHOLD}).")
+        elif signal_dir == "SELL" and current_clv <= CLV_SELL_THRESHOLD:
             clv_supporting = True
-            reasons.append(f"CLV favorece SELL ({current_clv:.2f}).")
-        elif previous_clv is not None:
+            reasons.append(f"CLV confirma SELL fuerte ({current_clv:.2f} <= {CLV_SELL_THRESHOLD}).")
+        elif CLV_SELL_THRESHOLD < current_clv < CLV_BUY_THRESHOLD:
+            reasons.append(f"CLV débil ({current_clv:.2f}) — cierre sin convicción direccional.")
+        else:
+            reasons.append(
+                f"CLV no confirma {signal_dir} ({current_clv:.2f}) con umbrales "
+                f"BUY>={CLV_BUY_THRESHOLD} / SELL<={CLV_SELL_THRESHOLD}."
+            )
+        if previous_clv is not None:
             delta = current_clv - previous_clv
-            if (signal_dir == "BUY" and delta > 0.1) or (signal_dir == "SELL" and delta < -0.1):
-                clv_supporting = True
-                reasons.append(f"CLV mejorando en dirección ({current_clv:.2f} vs prev {previous_clv:.2f}).")
+            if abs(delta) > 0.1:
+                reasons.append(
+                    f"CLV cambió {delta:+.2f} vs prev {previous_clv:.2f}, "
+                    "pero no reemplaza la confirmación direccional estricta."
+                )
 
     # ── Enrichment: entry window ──────────────────────────
     if entry_window_open is not None:
