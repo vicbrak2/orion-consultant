@@ -28,6 +28,8 @@ from prometheus_fastapi_instrumentator import Instrumentator
 # Ensure project root is on the path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import agents.rag_client as rag_client
+from db.pool import create_pool, close_pool
+from services.episode_watcher import start as watcher_start, stop as watcher_stop, get_snapshot, get_all_snapshots
 
 from fastapi import Body, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -131,7 +133,20 @@ async def lifespan(app: FastAPI):
         logger.info("🔌 MCP Server mounted at /mcp/ (StreamableHTTP)")
         logger.info("📡 REST API available at /api/v1/")
         logger.info("📖 Swagger docs at /docs")
+
+        # ── Episode Watcher (Postgres direct) ──────────────────────
+        pool = await create_pool(settings.db_dsn)
+        watcher_task = watcher_start(pool, settings.episode_poll_interval_sec)
+        if watcher_task:
+            logger.info("📊 Episode watcher started (poll every %ds)", settings.episode_poll_interval_sec)
+        else:
+            logger.info("📊 Episode watcher disabled (ORION_DB_DSN not set)")
+
         yield
+
+        # ── Shutdown ────────────────────────────────────────────────
+        await watcher_stop()
+        await close_pool()
         logger.info("🌌 Orion Consultant shutting down.")
 
 
@@ -558,8 +573,15 @@ async def _compute_strategic_bias(req: StrategicBiasRequest) -> StrategicBiasRes
 
     Runs risk_manager + trend_analyzer for BUY and SELL in parallel.
     No pattern_expert — this is a macro state evaluation, not a per-signal one.
+    Enriches LLM context with live episode data from the DB watcher.
     """
     rag_context = await rag_client.fetch_rag_memory(req.symbol)
+
+    # Enrich with live episode snapshot from the DB watcher (if available)
+    episode_snap = get_snapshot(req.symbol)
+    if episode_snap:
+        episode_ctx = episode_snap.as_rag_context()
+        rag_context = f"{episode_ctx}\n{rag_context}".strip() if rag_context else episode_ctx
 
     # 1. Risk gate — is it safe to trade at all?
     risk_opinion = await evaluate_risk(
@@ -1047,3 +1069,40 @@ async def agent_health():
             "webhook_path": settings.n8n_agent_chat_webhook_path,
             "timestamp": int(datetime.now(timezone.utc).timestamp() * 1000),
         }
+
+
+# ── Episode Status (Episode Watcher) ──────────────────────────────────────────
+
+
+@app.get("/api/v1/episode-status", tags=["Episodes"])
+async def episode_status_all():
+    """Return cached episode snapshots for all known symbols.
+
+    Populated by the background episode watcher that polls strategy_episodes
+    every ORION_EPISODE_POLL_INTERVAL_SEC seconds. Returns an empty dict if
+    the watcher is disabled (ORION_DB_DSN not set) or no episodes exist yet.
+    """
+    snapshots = get_all_snapshots()
+    return {
+        "watcher_enabled": bool(settings.db_dsn),
+        "poll_interval_sec": settings.episode_poll_interval_sec,
+        "symbol_count": len(snapshots),
+        "snapshots": snapshots,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/api/v1/episode-status/{symbol}", tags=["Episodes"])
+async def episode_status_symbol(symbol: str):
+    """Return the cached episode snapshot for a specific symbol.
+
+    Uses URL encoding for symbols with spaces: ``Step%20Index``.
+    Returns 404 if the symbol is unknown (watcher has no data for it yet).
+    """
+    snap = get_snapshot(symbol)
+    if snap is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No episode data for symbol '{symbol}'. Watcher may be disabled or no episodes exist yet.",
+        )
+    return snap.as_dict()

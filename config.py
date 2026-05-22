@@ -91,6 +91,20 @@ class Settings(BaseSettings):
         alias="ORION_ENABLE_EXPERT_LLM",
     )
 
+    # ── Database (episode watcher) ─────────────────────────────────────────
+    # Full asyncpg DSN: postgresql://user:pass@host:port/dbname
+    # Leave empty to disable the episode watcher (no DB access).
+    db_dsn: str = Field(
+        default="",
+        alias="ORION_DB_DSN",
+        description="asyncpg DSN for Postgres. Empty = episode watcher disabled.",
+    )
+    episode_poll_interval_sec: int = Field(
+        default=30,
+        alias="ORION_EPISODE_POLL_INTERVAL_SEC",
+        description="How often (seconds) the episode watcher polls strategy_episodes.",
+    )
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
