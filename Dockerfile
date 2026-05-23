@@ -27,8 +27,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgbm1 libasound2 libpango-1.0-0 libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
+# Set Playwright browser path to a shared directory
+ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/playwright
+
 # Install Playwright chromium browser binary
-RUN pip install playwright>=1.40.0 && playwright install chromium
+RUN playwright install chromium && \
+    chmod -R 755 /usr/local/share/playwright
 
 # Non-root user for security
 RUN useradd --create-home orion
