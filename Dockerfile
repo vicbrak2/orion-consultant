@@ -20,8 +20,19 @@ COPY --from=builder /install /usr/local
 # Copy source code
 COPY . .
 
+# Install system dependencies for Chromium (must run as root before USER orion)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
+    libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 \
+    libgbm1 libasound2 libpango-1.0-0 libcairo2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Playwright chromium browser binary
+RUN pip install playwright>=1.40.0 && playwright install chromium
+
 # Non-root user for security
 RUN useradd --create-home orion
+RUN mkdir -p /app/snapshots && chown -R orion:orion /app/snapshots
 USER orion
 
 # Expose FastAPI port
