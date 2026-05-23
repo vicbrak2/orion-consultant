@@ -1,0 +1,3 @@
+"""
+Orion Consultant — Outbound adapters.
+"""

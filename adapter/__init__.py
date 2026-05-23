@@ -1,0 +1,3 @@
+"""
+Orion Consultant — Adapters package.
+"""

@@ -89,6 +89,9 @@ from metrics import (
 # Import the MCP server instance for mounting
 from mcp_server import mcp as mcp_server_instance
 
+# Import the screenshot renderer
+from adapter.out.screenshot_renderer import PlaywrightScreenshotRenderer
+
 # ── Logging ───────────────────────────────────────────
 
 logging.basicConfig(
@@ -96,6 +99,12 @@ logging.basicConfig(
     format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
 )
 logger = logging.getLogger("orion")
+
+# Initialize screenshot renderer
+screenshot_renderer = PlaywrightScreenshotRenderer(
+    render_url=settings.render_url,
+    snapshots_dir=settings.snapshots_dir,
+)
 
 
 class _HealthMetricsFilter(logging.Filter):
@@ -707,6 +716,17 @@ async def consult_committee(payload: Any = Body(...)):
 
     verdict = await _build_committee_verdict(signal)
     latency_ms = round((perf_counter() - started) * 1000)
+
+    # Asynchronously trigger visual chart screenshot capturing
+    if signal.trace_id:
+        timeframe = signal.trend_timeframe or "5m"
+        asyncio.create_task(
+            screenshot_renderer.capture(
+                symbol=signal.symbol,
+                timeframe=timeframe,
+                trace_id=signal.trace_id
+            )
+        )
 
     rr = _compute_rr(signal.entry_price, signal.stop_loss, signal.take_profit)
     votes = {op.expert.value: op.verdict.value for op in verdict.opinions}

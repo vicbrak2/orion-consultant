@@ -91,6 +91,16 @@ class Settings(BaseSettings):
         alias="ORION_ENABLE_EXPERT_LLM",
     )
 
+    # ── Render / Playwright ───────────────────────────
+    render_url: str = Field(
+        default="http://app-dev:8080/render/chart.html",
+        alias="ORION_RENDER_URL",
+    )
+    snapshots_dir: str = Field(
+        default="./snapshots",
+        alias="ORION_SNAPSHOTS_DIR",
+    )
+
     # ── Database (episode watcher) ─────────────────────────────────────────
     # Full asyncpg DSN: postgresql://user:pass@host:port/dbname
     # Leave empty to disable the episode watcher (no DB access).
