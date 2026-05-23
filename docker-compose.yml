@@ -38,8 +38,13 @@ services:
       - ORION_JAVA_BOT_URL=${ORION_JAVA_BOT_URL:-http://llm-trade-nx-dev:8080}
       # Security
       - ORION_API_KEY=${ORION_API_KEY:-}
+      # Render / Playwright
+      - ORION_RENDER_URL=${ORION_RENDER_URL:-http://app-dev:8080/render/chart.html}
+      - ORION_SNAPSHOTS_DIR=${ORION_SNAPSHOTS_DIR:-/app/snapshots}
     networks:
       - llm-trade-network
+    volumes:
+      - orion-snapshots:/app/snapshots
     healthcheck:
       test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://localhost:8090/health')"]
       interval: 30s
@@ -63,3 +68,6 @@ networks:
   llm-trade-network:
     external: true
     name: ${ORION_DOCKER_NETWORK:-trading-net}
+
+volumes:
+  orion-snapshots:
