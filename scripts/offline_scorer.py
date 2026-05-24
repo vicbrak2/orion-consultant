@@ -122,7 +122,7 @@ WITH closed AS (
         tr.entry_adx,
         tr.entry_regime,
         tr.orion_verdict,
-        tr.exit_type,
+        t.exit_type,
         -- FSM phase stored in trades.decision_context JSONB
         t.decision_context->>'fsm_phase'                AS fsm_phase,
         -- entry_window_open from decision_context

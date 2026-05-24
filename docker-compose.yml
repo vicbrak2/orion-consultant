@@ -41,6 +41,9 @@ services:
       # Render / Playwright
       - ORION_RENDER_URL=${ORION_RENDER_URL:-http://app-dev:8080/render/chart.html}
       - ORION_SNAPSHOTS_DIR=${ORION_SNAPSHOTS_DIR:-/app/snapshots}
+      # Episode watcher - direct Postgres access
+      - ORION_DB_DSN=${ORION_DB_DSN:-postgresql://trader:mysecretpassword@postgres-db:5432/tradingbot}
+      - ORION_EPISODE_POLL_INTERVAL_SEC=${ORION_EPISODE_POLL_INTERVAL_SEC:-30}
     networks:
       - llm-trade-network
     volumes:
