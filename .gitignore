@@ -34,3 +34,4 @@ build/
 .claude/
 .codex/
 graphify-out/
+scratch_snapshots/
