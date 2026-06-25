@@ -45,7 +45,8 @@ import psycopg2.extras
 # Config
 # ---------------------------------------------------------------------------
 
-DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+# DATABASE_URL preferente; si no, reutiliza el DSN que orion ya tiene en el contenedor
+DATABASE_URL: str = os.getenv("DATABASE_URL") or os.getenv("ORION_DB_DSN", "")
 LOOKBACK_DAYS: int = int(os.getenv("SCORER_LOOKBACK_DAYS", "90"))
 MIN_SAMPLES: int = int(os.getenv("SCORER_MIN_SAMPLES", "15"))
 DRY_RUN: bool = os.getenv("SCORER_DRY_RUN", "0") == "1"

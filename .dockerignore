@@ -37,6 +37,8 @@ htmlcov/
 # ── Docs & scripts ────────────────────────────────────
 *.md
 scripts/
+# Excepción: el scorer nocturno debe estar en la imagen para el cron (feature_win_rates)
+!scripts/offline_scorer.py
 commit_vigilante.bat
 
 # ── Misc ──────────────────────────────────────────────
